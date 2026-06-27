@@ -1,5 +1,5 @@
 import polypulse.markets as markets
-from polypulse.markets import Market, list_markets, tokens_for_slug
+from polypulse.markets import list_markets, tokens_for_slug
 
 
 def _fake_events():
@@ -59,13 +59,14 @@ def test_list_markets_parses_open_markets(monkeypatch):
     assert by_slug["m-open-str"].condition_id == "0xcond1"
     assert by_slug["m-open-str"].question == "Q open str?"
     assert by_slug["m-open-str"].volume_24h == 123.5
-    assert isinstance(by_slug["m-open-list"], Market)
+    assert by_slug["m-open-str"].end_date == "2026-07-01T00:00:00Z"
 
 
 def test_list_markets_includes_closed_when_requested(monkeypatch):
     monkeypatch.setattr(markets, "get_json", lambda url, timeout=20.0: _fake_events())
     slugs = {m.slug for m in list_markets(closed=True)}
     assert "m-closed" in slugs and "m-inactive" in slugs
+    assert "m-notokens" not in slugs
 
 
 def test_list_markets_builds_url(monkeypatch):
@@ -79,6 +80,18 @@ def test_list_markets_builds_url(monkeypatch):
     list_markets(tag="weather", limit=5)
     assert "tag_slug=weather" in seen["url"]
     assert "limit=5" in seen["url"]
+
+
+def test_list_markets_url_encodes_tag(monkeypatch):
+    seen = {}
+
+    def fake(url, timeout=20.0):
+        seen["url"] = url
+        return []
+
+    monkeypatch.setattr(markets, "get_json", fake)
+    list_markets(tag="a b&c")
+    assert "tag_slug=a%20b%26c" in seen["url"]
 
 
 def test_tokens_for_slug(monkeypatch):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 from .rest import get_json
 
@@ -58,7 +59,7 @@ def list_markets(
     """
     url = f"{GAMMA_EVENTS}?limit={int(limit)}&order=createdAt&ascending=false"
     if tag:
-        url += f"&tag_slug={tag}"
+        url += f"&tag_slug={quote(tag, safe='')}"
     events = get_json(url, timeout=timeout)
     out: list[Market] = []
     for ev in events if isinstance(events, list) else []:
@@ -73,6 +74,7 @@ def list_markets(
             token_ids = [str(t) for t in _as_list(m.get("clobTokenIds"))]
             if not token_ids:
                 continue
+            ed = m.get("endDate") or ev.get("endDate")
             out.append(
                 Market(
                     slug=str(m.get("slug") or ev_slug),
@@ -80,7 +82,7 @@ def list_markets(
                     condition_id=str(m.get("conditionId") or ""),
                     token_ids=token_ids,
                     outcomes=[str(o) for o in _as_list(m.get("outcomes"))],
-                    end_date=(m.get("endDate") or ev.get("endDate")),
+                    end_date=str(ed) if ed is not None else None,
                     volume_24h=_to_float(m.get("volume24hr")),
                 )
             )
