@@ -10,6 +10,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+import websockets
+
 from .orderbook import OrderBook
 
 WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
@@ -155,3 +157,44 @@ class BookFeed:
             await awaitable
         except Exception:
             self.logger.exception("polypulse: async on_update callback raised")
+
+    # ----- connection loop -----
+
+    def stop(self) -> None:
+        self._stop = True
+
+    def _subscribe_msg(self) -> str:
+        return json.dumps({
+            "assets_ids": self.token_ids,
+            "type": "market",
+            "custom_feature_enabled": True,
+        })
+
+    async def run(self) -> None:
+        """Maintain the connection forever (until :meth:`stop`), reconnecting
+        with exponential backoff and resubscribing each time."""
+        backoff = 0.5
+        while not self._stop:
+            try:
+                async with websockets.connect(
+                    WS_URL, ping_interval=None, open_timeout=10, close_timeout=5
+                ) as ws:
+                    await ws.send(self._subscribe_msg())
+                    self._connected = True
+                    self._last_frame_ts = time.time()
+                    backoff = 0.5
+                    try:
+                        async for raw in ws:
+                            self._last_frame_ts = time.time()
+                            msg = raw if isinstance(raw, str) else raw.decode("utf-8", "replace")
+                            if msg == "PONG":
+                                continue
+                            self._handle(msg)
+                    finally:
+                        self._connected = False
+            except Exception as exc:
+                self.logger.debug("polypulse: ws error, will reconnect: %s", exc)
+            if self._stop:
+                break
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, self.max_backoff)

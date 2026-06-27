@@ -1,8 +1,11 @@
 import asyncio
 import json
+import types
 
+import polypulse.feed as feed_mod
 from polypulse.feed import BookFeed
 from polypulse.orderbook import OrderBook
+from tests.conftest import FakeConnect, FakeWS
 
 
 def _book_msg(token: str) -> str:
@@ -145,3 +148,30 @@ def test_async_callback_exception_does_not_propagate():
         return feed.best_bid("T1")
 
     assert asyncio.run(run()) == 0.40      # book updated, exception did not propagate
+
+
+def test_run_subscribes_and_applies_then_reconnects(monkeypatch):
+    # First connection yields one book frame then ends; second connection is
+    # used to assert resubscription, after which we stop the feed.
+    ws1 = FakeWS([_book_msg("T1")])
+    ws2 = FakeWS([])
+    conns = [ws1, ws2]
+    made = []
+
+    feed = BookFeed(["T1"], rest_fallback=False, max_backoff=0.01)
+
+    def fake_connect(*a, **k):
+        ws = conns.pop(0)
+        made.append(ws)
+        if not conns:           # on the 2nd connection, stop after it drains
+            feed.stop()
+        return FakeConnect(ws)
+
+    monkeypatch.setattr(feed_mod, "websockets", types.SimpleNamespace(connect=fake_connect))
+
+    asyncio.run(asyncio.wait_for(feed.run(), timeout=2.0))
+
+    assert feed.best_bid("T1") == 0.40                       # frame applied
+    assert json.loads(ws1.sent[0])["assets_ids"] == ["T1"]  # subscribed
+    assert json.loads(ws2.sent[0])["assets_ids"] == ["T1"]  # resubscribed after reconnect
+    assert len(made) == 2
