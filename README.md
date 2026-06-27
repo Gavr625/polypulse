@@ -7,7 +7,9 @@
 **Real-time pulse of Polymarket — an order book feed that never freezes.**
 
 `polypulse` keeps a live, in-memory Polymarket order book over WebSocket, so reading
-the best bid/ask is instant instead of paying ~19–80 ms on every REST `/book` poll.
+the best bid/ask is instant — with no per-read network round-trip. REST `/book` polling
+pays its latency on **every** read (≈185 ms from a typical host, ≈19 ms warm when
+colocated); `polypulse` pays a one-time subscribe, then updates are pushed.
 It adds the production reliability the official tooling lacks: heartbeat, a
 PONG-aware watchdog that detects the silent WS freeze ([issue #292](https://github.com/Polymarket/py-clob-client/issues/292)),
 exponential-backoff reconnect, and an optional REST fallback.
@@ -38,7 +40,7 @@ asyncio.run(main())
 
 REST `/book` polling pays per-read latency and serves a book that is ~1 s stale.
 Polymarket's WebSocket can also **silently freeze** — the connection stays open but
-events stop. `polypulse` pushes updates (~sub-2 ms from the matching engine) and
+events stop. `polypulse` pushes updates as the book changes (no per-read latency) and
 guarantees liveness with a watchdog that reconnects the moment the socket goes quiet.
 
 ## API
@@ -69,9 +71,23 @@ guarantees liveness with a watchdog that reconnects the moment the socket goes q
 python -m polypulse benchmark
 ```
 
-Prints REST `/book` TTFB vs WebSocket time-to-first-book and update cadence on a live
-market — the empirical case for the WS feed. Replace the figures above with your own
-run's output.
+It picks a live market and compares REST `/book` time-to-first-byte against the
+WebSocket feed. Example run (from a non-colocated host — your absolute numbers depend
+on where you run it):
+
+```
+market: highest-temperature-in-karachi-on-june-29-2026  (11 tokens)
+REST /book TTFB: median 184.5ms  min 124.4  max 238.3  (n=8)
+WS subscribe → first book: 220.6ms
+WS updates in 30s: 130 (4.3/s)
+
+=== verdict ===
+REST pays ~185ms EVERY read; WS pays 221ms ONCE, then updates are PUSHED (no per-read latency).
+```
+
+Absolute latency drops sharply when colocated (a eu-west-2 host measured ~19 ms warm
+REST GETs), but the structural win holds everywhere: REST pays its round-trip on every
+read; the WS feed pays once.
 
 ## Honest note
 
