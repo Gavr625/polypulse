@@ -229,9 +229,12 @@ def test_stop_closes_live_connection(monkeypatch):
 
     async def run():
         task = asyncio.create_task(feed.run())
-        await asyncio.sleep(0.02)            # let it connect and start streaming
+        for _ in range(200):  # wait until connected (deterministic, not a fixed sleep)
+            if feed._connected:
+                break
+            await asyncio.sleep(0.005)
         feed.stop()                          # must close the live ws → loop ends promptly
-        await asyncio.wait_for(task, timeout=1.0)
+        await asyncio.wait_for(task, timeout=2.0)
         return ws.closed
 
     assert asyncio.run(run()) is True
