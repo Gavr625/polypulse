@@ -22,3 +22,13 @@ def test_pick_active_market_skips_closed_markets():
         {"slug": "x", "markets": [{"closed": True, "clobTokenIds": '["A1","B1"]'}]},
     ]
     assert pick_active_market(events, min_tokens=1) is None
+
+
+def test_pick_active_market_accepts_clobtokenids_as_list():
+    events = [{"slug": "y", "markets": [{"clobTokenIds": ["A1", "B1"]}]}]
+    assert pick_active_market(events, min_tokens=1) == ("y", ["A1"])
+
+
+def test_pick_active_market_skips_inactive_markets():
+    events = [{"slug": "z", "markets": [{"active": False, "clobTokenIds": '["A1","B1"]'}]}]
+    assert pick_active_market(events, min_tokens=1) is None

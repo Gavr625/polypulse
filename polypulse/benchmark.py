@@ -12,7 +12,7 @@ from typing import Any
 import websockets
 
 from .feed import WS_URL
-from .rest import REST_BOOK
+from .rest import fetch_book
 
 GAMMA = (
     "https://gamma-api.polymarket.com/events"
@@ -64,11 +64,11 @@ async def run_benchmark() -> None:
     for _ in range(8):
         t0 = time.time()
         try:
-            _get(REST_BOOK + one)
+            fetch_book(one)
             rest_ms.append((time.time() - t0) * 1000)
         except Exception as exc:
             print(f"  REST err: {exc}")
-        time.sleep(0.3)
+        await asyncio.sleep(0.3)
     if rest_ms:
         print(f"REST /book TTFB: median {statistics.median(rest_ms):.1f}ms  "
               f"min {min(rest_ms):.1f}  max {max(rest_ms):.1f}  (n={len(rest_ms)})")
@@ -97,9 +97,11 @@ async def run_benchmark() -> None:
                 if et in ("book", "price_change"):
                     update_count += 1
 
+    elapsed = time.time() - t_sub
     if first_book_ms is not None:
         print(f"\nWS subscribe → first book: {first_book_ms:.1f}ms")
-    print(f"WS updates in 30s: {update_count} ({update_count / 30:.1f}/s)")
+    rate = update_count / elapsed if elapsed > 0 else 0.0
+    print(f"WS updates in {elapsed:.0f}s: {update_count} ({rate:.1f}/s)")
     if rest_ms and first_book_ms is not None:
         print("\n=== verdict ===")
         print(f"REST pays ~{statistics.median(rest_ms):.0f}ms EVERY read; "
