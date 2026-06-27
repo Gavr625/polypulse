@@ -66,3 +66,29 @@ def test_source_and_ts_tracked():
     b.apply_snapshot(bids=[{"price": "0.5", "size": "1"}], asks=[], ts=1234.0, source="rest")
     assert b.ts == 1234.0
     assert b.source == "rest"
+
+
+def test_apply_change_unknown_side_is_ignored():
+    b = OrderBook()
+    _snap(b)
+    b.apply_change(side="WAT", price="0.43", size=10.0, ts=1004.0)
+    assert b.best_ask() == 0.42  # unchanged; not corrupted into asks
+
+
+def test_non_numeric_price_does_not_freeze_book():
+    b = OrderBook()
+    _snap(b)
+    b.apply_change(side="BUY", price="oops", size=5.0, ts=1005.0)  # must not poison
+    assert b.best_bid() == 0.40
+    b.apply_change(side="BUY", price="0.41", size=5.0, ts=1006.0)  # subsequent update still works
+    assert b.best_bid() == 0.41
+
+
+def test_snapshot_skips_non_numeric_price():
+    b = OrderBook()
+    b.apply_snapshot(
+        bids=[{"price": "bad", "size": "1"}, {"price": "0.30", "size": "2"}],
+        asks=[],
+        ts=2000.0,
+    )
+    assert b.best_bid() == 0.30  # bad level dropped, good level kept

@@ -28,20 +28,39 @@ class OrderBook:
         ts: float,
         source: str = "ws",
     ) -> None:
-        self.bids = {
-            lvl["price"]: float(lvl["size"]) for lvl in (bids or []) if float(lvl["size"]) > 0
-        }
-        self.asks = {
-            lvl["price"]: float(lvl["size"]) for lvl in (asks or []) if float(lvl["size"]) > 0
-        }
+        self.bids = self._build_side(bids)
+        self.asks = self._build_side(asks)
         self.ts = ts
         self.source = source
         self._recompute()
 
+    @staticmethod
+    def _build_side(levels: list[dict[str, Any]] | None) -> dict[str, float]:
+        out: dict[str, float] = {}
+        for lvl in levels or []:
+            try:
+                price = str(lvl["price"])
+                size = float(lvl["size"])
+                float(price)  # ensure the price key is numeric so _recompute can't choke
+            except (KeyError, TypeError, ValueError):
+                continue
+            if size > 0:
+                out[price] = size
+        return out
+
     def apply_change(
         self, side: str, price: str, size: float, ts: float, source: str = "ws"
     ) -> None:
-        book = self.bids if side == "BUY" else self.asks
+        if side == "BUY":
+            book = self.bids
+        elif side == "SELL":
+            book = self.asks
+        else:
+            return  # unknown side: ignore rather than corrupt a side
+        try:
+            float(price)
+        except (TypeError, ValueError):
+            return  # unparseable price: skip rather than poison the book
         if size <= 0:
             book.pop(price, None)
         else:
