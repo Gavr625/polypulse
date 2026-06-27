@@ -40,4 +40,4 @@ MIT, pip-installable, tested. Happy to answer questions about the latency work.
 3/ But Polymarket's WS can silently freeze - open connection, no events. polypulse
    ships a PONG-aware watchdog + auto-reconnect + REST fallback so the book stays live.
 4/ Built it for a trading bot; the edge didn't pan out, the infra did. Take it.
-   MIT, typed, tested, CI. Star it: github.com/gavriil/polypulse
+   MIT, typed, tested, CI. Star it: github.com/Gavr625/polypulse

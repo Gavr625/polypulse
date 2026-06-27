@@ -1,7 +1,7 @@
 # polypulse
 
 [![PyPI](https://img.shields.io/pypi/v/polypulse.svg)](https://pypi.org/project/polypulse/)
-[![CI](https://github.com/gavriil/polypulse/actions/workflows/ci.yml/badge.svg)](https://github.com/gavriil/polypulse/actions/workflows/ci.yml)
+[![CI](https://github.com/Gavr625/polypulse/actions/workflows/ci.yml/badge.svg)](https://github.com/Gavr625/polypulse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 **Real-time pulse of Polymarket — an order book feed that never freezes.**
