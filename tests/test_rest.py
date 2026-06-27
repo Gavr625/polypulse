@@ -26,3 +26,25 @@ def test_fetch_book_builds_url_and_parses(monkeypatch):
     assert data["bids"][0]["price"] == "0.4"
     assert captured["url"].endswith("token_id=TOKEN123")
     assert captured["timeout"] == 5.0
+
+
+def test_fetch_book_url_encodes_token_id(monkeypatch):
+    captured = {}
+
+    class FakeResp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["url"] = req.full_url
+        captured["timeout"] = timeout
+        payload = {"bids": [], "asks": []}
+        return FakeResp(json.dumps(payload).encode())
+
+    monkeypatch.setattr(rest.urllib.request, "urlopen", fake_urlopen)
+
+    rest.fetch_book("a b&c")
+    assert captured["url"].endswith("token_id=a%20b%26c")
