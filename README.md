@@ -89,6 +89,22 @@ Absolute latency drops sharply when colocated (a eu-west-2 host measured ~19 ms 
 REST GETs), but the structural win holds everywhere: REST pays its round-trip on every
 read; the WS feed pays once.
 
+## Watch a live book
+
+```bash
+polypulse watch <token_id>
+```
+
+Prints top-of-book once a second — a quick sanity check that the feed is live:
+
+```
+3414098972...  bid=0.012  ask=0.024  mid=0.018  src=ws
+3414098972...  bid=0.012  ask=0.024  mid=0.018  src=ws
+```
+
+Values tick as the market moves; `src` shows `ws` or `rest` (REST fallback). An
+animated GIF reads even better here — record one to drop in.
+
 ## Honest note
 
 `polypulse` was extracted from a live Polymarket trading bot. The trading edge didn't
