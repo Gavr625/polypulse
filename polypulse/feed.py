@@ -49,6 +49,7 @@ class BookFeed:
         self._stop = False
         self._connected = False
         self._last_frame_ts = 0.0
+        self._pending: set[asyncio.Task[Any]] = set()
 
     # ----- reads (sync, no network) -----
 
@@ -137,10 +138,17 @@ class BookFeed:
             return
         if inspect.isawaitable(result):
             try:
-                asyncio.ensure_future(self._await_cb(result))
+                loop = asyncio.get_running_loop()
             except RuntimeError:
-                # no running loop (called from sync context) — run to completion
-                asyncio.get_event_loop().run_until_complete(self._await_cb(result))
+                # No running loop (sync caller): run to completion in a fresh loop.
+                try:
+                    asyncio.run(self._await_cb(result))
+                except Exception:
+                    self.logger.exception("polypulse: async on_update callback raised")
+                return
+            task = loop.create_task(self._await_cb(result))
+            self._pending.add(task)
+            task.add_done_callback(self._pending.discard)
 
     async def _await_cb(self, awaitable: Any) -> None:
         try:

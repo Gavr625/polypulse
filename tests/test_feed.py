@@ -132,3 +132,16 @@ def test_async_callback_is_awaited():
         return seen
 
     assert asyncio.run(run()) == ["T1"]
+
+
+def test_async_callback_exception_does_not_propagate():
+    async def boom(tid, ev):
+        raise ValueError("boom")
+
+    async def run():
+        feed = BookFeed(["T1"], on_update=boom)
+        feed._handle(_book_msg("T1"))      # schedules the async callback
+        await asyncio.sleep(0.01)          # let it run and raise (caught in _await_cb)
+        return feed.best_bid("T1")
+
+    assert asyncio.run(run()) == 0.40      # book updated, exception did not propagate
