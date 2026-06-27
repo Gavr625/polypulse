@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from polypulse.feed import BookFeed
@@ -100,3 +101,34 @@ def _book_dict(token: str) -> dict:
         "bids": [{"price": "0.40", "size": "100"}],
         "asks": [{"price": "0.42", "size": "80"}],
     }
+
+
+def test_sync_callback_is_called():
+    seen = []
+    feed = BookFeed(["T1"], on_update=lambda tid, ev: seen.append((tid, ev["event_type"])))
+    feed._handle(_book_msg("T1"))
+    assert seen == [("T1", "book")]
+
+
+def test_sync_callback_exception_does_not_propagate():
+    def boom(tid, ev):
+        raise ValueError("boom")
+    feed = BookFeed(["T1"], on_update=boom)
+    feed._handle(_book_msg("T1"))  # must not raise
+    assert feed.best_bid("T1") == 0.40  # book still updated
+
+
+def test_async_callback_is_awaited():
+    seen = []
+
+    async def cb(tid, ev):
+        await asyncio.sleep(0)
+        seen.append(tid)
+
+    async def run():
+        feed = BookFeed(["T1"], on_update=cb)
+        feed._handle(_book_msg("T1"))
+        await asyncio.sleep(0.01)  # let the scheduled task run
+        return seen
+
+    assert asyncio.run(run()) == ["T1"]

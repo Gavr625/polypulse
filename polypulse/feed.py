@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import logging
 import time
@@ -126,7 +128,22 @@ class BookFeed:
                 continue
 
     def _fire(self, token_id: str, event: dict[str, Any]) -> None:
-        # Filled in by Task 5. For now, a no-op when no callback is set.
         if self.on_update is None:
             return
-        self.on_update(token_id, event)
+        try:
+            result = self.on_update(token_id, event)
+        except Exception:
+            self.logger.exception("polypulse: on_update callback raised")
+            return
+        if inspect.isawaitable(result):
+            try:
+                asyncio.ensure_future(self._await_cb(result))
+            except RuntimeError:
+                # no running loop (called from sync context) — run to completion
+                asyncio.get_event_loop().run_until_complete(self._await_cb(result))
+
+    async def _await_cb(self, awaitable: Any) -> None:
+        try:
+            await awaitable
+        except Exception:
+            self.logger.exception("polypulse: async on_update callback raised")
