@@ -1,4 +1,4 @@
-from polypulse.cli import build_parser
+from polypulse.cli import build_parser, main
 
 
 def test_parser_benchmark_subcommand():
@@ -15,3 +15,10 @@ def test_parser_watch_requires_tokens():
 def test_parser_no_command_is_none():
     args = build_parser().parse_args([])
     assert args.command is None
+
+
+def test_main_no_args_prints_help_and_returns_0(capsys):
+    rc = main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "usage" in out.lower()

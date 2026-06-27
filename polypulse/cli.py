@@ -34,17 +34,19 @@ async def _watch(tokens: list[str]) -> None:
     finally:
         feed.stop()
         task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    if args.command == "benchmark":
-        asyncio.run(run_benchmark())
-    elif args.command == "watch":
-        try:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        if args.command == "benchmark":
+            asyncio.run(run_benchmark())
+        elif args.command == "watch":
             asyncio.run(_watch(args.tokens))
-        except KeyboardInterrupt:
-            pass
-    else:
-        build_parser().print_help()
+        else:
+            parser.print_help()
+    except KeyboardInterrupt:
+        pass
     return 0
