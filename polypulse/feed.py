@@ -50,6 +50,7 @@ class BookFeed:
 
         self.books: dict[str, OrderBook] = {}
         self._stop = False
+        self._wake = asyncio.Event()
         self._connected = False
         self._last_frame_ts = 0.0
         self._ws: Any = None
@@ -114,6 +115,7 @@ class BookFeed:
                     self.books[aid] = ob
                     self._fire(aid, ev)
                 elif et == "price_change":
+                    affected: set[str] = set()
                     for pc in ev.get("price_changes") or []:
                         aid = pc.get("asset_id")
                         ob = self.books.get(aid) if aid else None
@@ -123,6 +125,8 @@ class BookFeed:
                             pc.get("side", ""), pc.get("price", ""),
                             float(pc.get("size", 0)), now, "ws",
                         )
+                        affected.add(aid)
+                    for aid in affected:
                         self._fire(aid, ev)
                 else:
                     aid = ev.get("asset_id")
@@ -169,6 +173,8 @@ class BookFeed:
                 await ws.send("PING")
         except asyncio.CancelledError:
             pass
+        except Exception:
+            return  # socket dying during teardown — exit quietly
 
     async def _watchdog(self, ws: Any) -> None:
         interval = max(0.005, min(5.0, self.watchdog_timeout / 3))
@@ -177,7 +183,10 @@ class BookFeed:
                 await asyncio.sleep(interval)
                 if time.time() - self._last_frame_ts > self.watchdog_timeout:
                     self.logger.debug("polypulse: watchdog tripped, forcing reconnect")
-                    await ws.close()
+                    try:
+                        await ws.close()
+                    except Exception:
+                        pass
                     return
         except asyncio.CancelledError:
             pass
@@ -210,6 +219,7 @@ class BookFeed:
 
     def stop(self) -> None:
         self._stop = True
+        self._wake.set()
         ws = self._ws
         if ws is not None:
             try:
@@ -265,7 +275,10 @@ class BookFeed:
                     self.logger.debug("polypulse: ws error, will reconnect: %s", exc)
                 if self._stop:
                     break
-                await asyncio.sleep(backoff)
+                try:
+                    await asyncio.wait_for(self._wake.wait(), timeout=backoff)
+                except asyncio.TimeoutError:
+                    pass
                 backoff = min(backoff * 2, self.max_backoff)
         finally:
             rest_task.cancel()

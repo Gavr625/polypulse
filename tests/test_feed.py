@@ -283,3 +283,34 @@ def test_public_exports():
     assert polypulse.BookFeed is BookFeed
     from polypulse import OrderBook as OB
     assert OB is OrderBook
+
+
+def test_stop_during_backoff_is_prompt(monkeypatch):
+    def fail_connect(*a, **k):
+        raise OSError("nope")
+
+    feed = BookFeed(["T1"], rest_fallback=False, max_backoff=30.0)
+    monkeypatch.setattr(feed_mod, "websockets", types.SimpleNamespace(connect=fail_connect))
+
+    async def run():
+        task = asyncio.create_task(feed.run())
+        await asyncio.sleep(0.05)          # let it fail once and enter the 0.5s backoff
+        feed.stop()                        # must interrupt the backoff sleep
+        await asyncio.wait_for(task, timeout=0.3)   # returns well before 0.5s would elapse
+
+    asyncio.run(run())  # must not raise asyncio.TimeoutError
+
+
+def test_price_change_fires_callback_once_per_token():
+    seen = []
+    feed = BookFeed(["T1"], on_update=lambda tid, ev: seen.append(tid))
+    feed._handle(_book_msg("T1"))
+    seen.clear()
+    feed._handle(json.dumps({
+        "event_type": "price_change",
+        "price_changes": [
+            {"asset_id": "T1", "price": "0.41", "size": "5", "side": "BUY"},
+            {"asset_id": "T1", "price": "0.39", "size": "3", "side": "BUY"},
+        ],
+    }))
+    assert seen == ["T1"]  # fired once for the token, not once per change
