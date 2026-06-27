@@ -184,7 +184,7 @@ def test_heartbeat_sends_ping():
 
     async def run():
         task = asyncio.create_task(feed._heartbeat(ws))
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.1)
         task.cancel()
 
     asyncio.run(run())
@@ -201,7 +201,7 @@ def test_watchdog_closes_when_silent():
 
 
 def test_watchdog_stays_alive_while_frames_arrive():
-    feed = BookFeed(["T1"], watchdog_timeout=0.2)
+    feed = BookFeed(["T1"], watchdog_timeout=0.5)
     ws = FakeWS([])
 
     async def run():

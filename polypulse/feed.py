@@ -188,10 +188,11 @@ class BookFeed:
         ws = self._ws
         if ws is not None:
             try:
-                asyncio.get_running_loop().create_task(ws.close())
+                task = asyncio.get_running_loop().create_task(ws.close())
             except RuntimeError:
-                # No running loop: the loop will exit on its next iteration.
-                pass
+                return  # no running loop; loop already stopped, close is moot
+            self._pending.add(task)
+            task.add_done_callback(self._pending.discard)
 
     def _subscribe_msg(self) -> str:
         return json.dumps({
