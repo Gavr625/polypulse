@@ -276,3 +276,10 @@ def test_rest_fallback_runs_only_while_disconnected(monkeypatch):
     assert n_disconnected >= 1               # fetched while disconnected
     assert c2 == c1                          # no NEW fetches while connected
     assert feed.best_bid("T1") == 0.3
+
+
+def test_public_exports():
+    import polypulse
+    assert polypulse.BookFeed is BookFeed
+    from polypulse import OrderBook as OB
+    assert OB is OrderBook
