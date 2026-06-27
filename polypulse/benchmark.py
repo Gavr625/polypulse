@@ -18,6 +18,10 @@ GAMMA = (
     "https://gamma-api.polymarket.com/events"
     "?tag_slug=weather&limit=80&order=createdAt&ascending=false"
 )
+GAMMA_FALLBACK = (
+    "https://gamma-api.polymarket.com/events"
+    "?limit=80&order=createdAt&ascending=false"
+)
 
 
 def _get(url: str) -> Any:
@@ -53,6 +57,8 @@ def pick_active_market(
 async def run_benchmark() -> None:
     print("=== Polymarket CLOB: WebSocket push vs REST poll latency ===\n")
     picked = pick_active_market(_get(GAMMA))
+    if not picked:
+        picked = pick_active_market(_get(GAMMA_FALLBACK))
     if not picked:
         print("no active market found")
         return

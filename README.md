@@ -43,7 +43,7 @@ guarantees liveness with a watchdog that reconnects the moment the socket goes q
 
 ## API
 
-`BookFeed(token_ids, on_update=None, *, ping_interval=10, watchdog_timeout=30, rest_fallback=True, max_backoff=30)`
+`BookFeed(token_ids, on_update=None, *, ping_interval=10, watchdog_timeout=30, rest_fallback=True, max_backoff=30, rest_poll_interval=1.0, logger=None)`
 
 - `best_bid / best_ask / mid / spread (token_id)` — sync, no network
 - `book(token_id)` — full-depth `OrderBook` snapshot
