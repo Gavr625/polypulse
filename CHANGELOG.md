@@ -5,3 +5,4 @@
 - Heartbeat, PONG-aware watchdog, exponential-backoff reconnect, REST fallback.
 - `OrderBook` model with best bid/ask, mid, spread, depth.
 - CLI: `polypulse benchmark`, `polypulse watch`.
+- Market discovery: `list_markets` / `tokens_for_slug` and a `polypulse markets` CLI command.

@@ -1,4 +1,4 @@
-"""Command-line interface: `polypulse benchmark` and `polypulse watch`."""
+"""Command-line interface: `polypulse benchmark`, `polypulse watch`, `polypulse markets`."""
 
 from __future__ import annotations
 

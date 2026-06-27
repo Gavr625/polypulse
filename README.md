@@ -36,6 +36,24 @@ async def main():
 asyncio.run(main())
 ```
 
+## Discover markets
+
+No `token_id` yet? Find active markets and their tokens via the Gamma API:
+
+```python
+from polypulse import list_markets, tokens_for_slug, BookFeed
+
+markets = list_markets(tag="weather")              # active markets (tag is optional)
+tokens = tokens_for_slug(markets, markets[0].slug) # the token ids for one market
+feed = BookFeed(tokens)                             # ...now stream them
+```
+
+Or from the terminal:
+
+```bash
+polypulse markets --tag weather
+```
+
 ## Why
 
 REST `/book` polling pays per-read latency and serves a book that is ~1 s stale.
