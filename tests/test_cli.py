@@ -22,3 +22,17 @@ def test_main_no_args_prints_help_and_returns_0(capsys):
     out = capsys.readouterr().out
     assert rc == 0
     assert "usage" in out.lower()
+
+
+def test_parser_markets_subcommand():
+    args = build_parser().parse_args(["markets", "--tag", "weather", "--limit", "5"])
+    assert args.command == "markets"
+    assert args.tag == "weather"
+    assert args.limit == 5
+
+
+def test_parser_markets_defaults():
+    args = build_parser().parse_args(["markets"])
+    assert args.command == "markets"
+    assert args.tag is None
+    assert args.limit == 100
