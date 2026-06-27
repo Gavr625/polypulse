@@ -261,16 +261,18 @@ def test_rest_fallback_runs_only_while_disconnected(monkeypatch):
     async def run():
         feed._connected = False
         task = asyncio.create_task(feed._rest_fallback_loop())
-        await asyncio.sleep(0.05)            # fallback should fire (disconnected)
+        await asyncio.sleep(0.05)            # fallback fires while disconnected
         n_disconnected = len(calls)
         feed._connected = True               # now "connected"
-        await asyncio.sleep(0.05)            # fallback should pause
-        n_connected = len(calls)
+        await asyncio.sleep(0.03)            # let any in-flight fetch settle
+        c1 = len(calls)
+        await asyncio.sleep(0.05)            # more time while connected
+        c2 = len(calls)
         feed.stop()
         task.cancel()
-        return n_disconnected, n_connected
+        return n_disconnected, c1, c2
 
-    n_disconnected, n_connected = asyncio.run(run())
-    assert n_disconnected >= 1
-    assert n_connected == n_disconnected      # no new fetches while connected
+    n_disconnected, c1, c2 = asyncio.run(run())
+    assert n_disconnected >= 1               # fetched while disconnected
+    assert c2 == c1                          # no NEW fetches while connected
     assert feed.best_bid("T1") == 0.3
