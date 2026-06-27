@@ -10,6 +10,14 @@ from urllib.parse import quote
 REST_BOOK = "https://clob.polymarket.com/book?token_id="
 
 
+def get_json(url: str, timeout: float = 20.0) -> Any:
+    """Blocking GET returning parsed JSON. Raises ``urllib.error.URLError`` (or its
+    ``HTTPError`` subclass) on network/HTTP failure."""
+    req = urllib.request.Request(url, headers={"User-Agent": "polypulse"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 (trusted host)
+        return json.load(resp)
+
+
 def fetch_book(token_id: str, timeout: float = 10.0) -> dict[str, Any]:
     """Blocking GET of the order book for one token. Returns the parsed JSON
     (keys include ``bids`` and ``asks``, each a list of ``{"price","size"}``).

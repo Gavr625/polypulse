@@ -6,13 +6,12 @@ import asyncio
 import json
 import statistics
 import time
-import urllib.request
 from typing import Any
 
 import websockets
 
 from .feed import WS_URL
-from .rest import fetch_book
+from .rest import fetch_book, get_json
 
 GAMMA = (
     "https://gamma-api.polymarket.com/events"
@@ -22,12 +21,6 @@ GAMMA_FALLBACK = (
     "https://gamma-api.polymarket.com/events"
     "?limit=80&order=createdAt&ascending=false"
 )
-
-
-def _get(url: str) -> Any:
-    req = urllib.request.Request(url, headers={"User-Agent": "polypulse-bench"})
-    with urllib.request.urlopen(req, timeout=20) as resp:  # noqa: S310 (trusted host)
-        return json.load(resp)
 
 
 def pick_active_market(
@@ -56,9 +49,9 @@ def pick_active_market(
 
 async def run_benchmark() -> None:
     print("=== Polymarket CLOB: WebSocket push vs REST poll latency ===\n")
-    picked = pick_active_market(_get(GAMMA))
+    picked = pick_active_market(get_json(GAMMA))
     if not picked:
-        picked = pick_active_market(_get(GAMMA_FALLBACK))
+        picked = pick_active_market(get_json(GAMMA_FALLBACK))
     if not picked:
         print("no active market found")
         return

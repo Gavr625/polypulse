@@ -48,3 +48,26 @@ def test_fetch_book_url_encodes_token_id(monkeypatch):
 
     rest.fetch_book("a b&c")
     assert captured["url"].endswith("token_id=a%20b%26c")
+
+
+def test_get_json_parses(monkeypatch):
+    captured = {}
+
+    class FakeResp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        captured["url"] = req.full_url
+        captured["timeout"] = timeout
+        return FakeResp(json.dumps({"hello": "world"}).encode())
+
+    monkeypatch.setattr(rest.urllib.request, "urlopen", fake_urlopen)
+
+    data = rest.get_json("https://example.com/x", timeout=7.0)
+    assert data == {"hello": "world"}
+    assert captured["url"] == "https://example.com/x"
+    assert captured["timeout"] == 7.0
