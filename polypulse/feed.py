@@ -13,6 +13,7 @@ from typing import Any
 import websockets
 
 from .orderbook import OrderBook
+from .rest import fetch_book
 
 WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market"
 
@@ -181,6 +182,30 @@ class BookFeed:
         except asyncio.CancelledError:
             pass
 
+    # ----- REST fallback -----
+
+    def _apply_rest(self, token_id: str, data: dict[str, Any]) -> None:
+        ob = self.books.get(token_id)
+        if ob is None:
+            ob = OrderBook()
+        ob.apply_snapshot(data.get("bids"), data.get("asks"), time.time(), "rest")
+        self.books[token_id] = ob
+
+    async def _rest_fallback_loop(self) -> None:
+        if not self.rest_fallback:
+            return
+        loop = asyncio.get_running_loop()
+        while not self._stop:
+            await asyncio.sleep(self.rest_poll_interval)
+            if self._connected:
+                continue
+            for tid in self.token_ids:
+                try:
+                    data = await loop.run_in_executor(None, fetch_book, tid)
+                    self._apply_rest(tid, data)
+                except Exception as exc:
+                    self.logger.debug("polypulse: rest fallback failed for %s: %s", tid, exc)
+
     # ----- connection loop -----
 
     def stop(self) -> None:
@@ -202,39 +227,45 @@ class BookFeed:
         })
 
     async def run(self) -> None:
-        """Maintain the connection forever (until :meth:`stop`), reconnecting
-        with exponential backoff and resubscribing each time.
-
-        :meth:`stop` closes the active connection for prompt shutdown.
-        """
-        backoff = 0.5
-        while not self._stop:
-            try:
-                async with websockets.connect(
-                    WS_URL, ping_interval=None, open_timeout=10, close_timeout=5
-                ) as ws:
-                    await ws.send(self._subscribe_msg())
-                    self._connected = True
-                    self._ws = ws
-                    self._last_frame_ts = time.time()
-                    backoff = 0.5
-                    hb = asyncio.create_task(self._heartbeat(ws))
-                    wd = asyncio.create_task(self._watchdog(ws))
-                    try:
-                        async for raw in ws:
-                            self._last_frame_ts = time.time()
-                            msg = raw if isinstance(raw, str) else raw.decode("utf-8", "replace")
-                            if msg == "PONG":
-                                continue
-                            self._handle(msg)
-                    finally:
-                        hb.cancel()
-                        wd.cancel()
-                        self._connected = False
-                        self._ws = None
-            except Exception as exc:
-                self.logger.debug("polypulse: ws error, will reconnect: %s", exc)
-            if self._stop:
-                break
-            await asyncio.sleep(backoff)
-            backoff = min(backoff * 2, self.max_backoff)
+        """Maintain the connection until :meth:`stop`, reconnecting with
+        exponential backoff and resubscribing each time. While the socket is
+        down, the optional REST fallback keeps books warm. :meth:`stop` closes
+        the active connection for prompt shutdown."""
+        rest_task = asyncio.create_task(self._rest_fallback_loop())
+        try:
+            backoff = 0.5
+            while not self._stop:
+                try:
+                    async with websockets.connect(
+                        WS_URL, ping_interval=None, open_timeout=10, close_timeout=5
+                    ) as ws:
+                        await ws.send(self._subscribe_msg())
+                        self._connected = True
+                        self._ws = ws
+                        self._last_frame_ts = time.time()
+                        backoff = 0.5
+                        hb = asyncio.create_task(self._heartbeat(ws))
+                        wd = asyncio.create_task(self._watchdog(ws))
+                        try:
+                            async for raw in ws:
+                                self._last_frame_ts = time.time()
+                                msg = (
+                                    raw if isinstance(raw, str)
+                                    else raw.decode("utf-8", "replace")
+                                )
+                                if msg == "PONG":
+                                    continue
+                                self._handle(msg)
+                        finally:
+                            hb.cancel()
+                            wd.cancel()
+                            self._connected = False
+                            self._ws = None
+                except Exception as exc:
+                    self.logger.debug("polypulse: ws error, will reconnect: %s", exc)
+                if self._stop:
+                    break
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, self.max_backoff)
+        finally:
+            rest_task.cancel()

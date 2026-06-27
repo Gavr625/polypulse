@@ -235,3 +235,42 @@ def test_stop_closes_live_connection(monkeypatch):
         return ws.closed
 
     assert asyncio.run(run()) is True
+
+
+def test_apply_rest_populates_book_with_source_rest():
+    feed = BookFeed(["T1"])
+    feed._apply_rest("T1", {
+        "bids": [{"price": "0.3", "size": "10"}],
+        "asks": [{"price": "0.35", "size": "5"}],
+    })
+    assert feed.best_bid("T1") == 0.3
+    assert feed.source("T1") == "rest"
+
+
+def test_rest_fallback_runs_only_while_disconnected(monkeypatch):
+    calls = []
+
+    def fake_fetch(token_id, timeout=10.0):
+        calls.append(token_id)
+        return {"bids": [{"price": "0.3", "size": "10"}], "asks": []}
+
+    monkeypatch.setattr(feed_mod, "fetch_book", fake_fetch)
+
+    feed = BookFeed(["T1"], rest_fallback=True, rest_poll_interval=0.01)
+
+    async def run():
+        feed._connected = False
+        task = asyncio.create_task(feed._rest_fallback_loop())
+        await asyncio.sleep(0.05)            # fallback should fire (disconnected)
+        n_disconnected = len(calls)
+        feed._connected = True               # now "connected"
+        await asyncio.sleep(0.05)            # fallback should pause
+        n_connected = len(calls)
+        feed.stop()
+        task.cancel()
+        return n_disconnected, n_connected
+
+    n_disconnected, n_connected = asyncio.run(run())
+    assert n_disconnected >= 1
+    assert n_connected == n_disconnected      # no new fetches while connected
+    assert feed.best_bid("T1") == 0.3
