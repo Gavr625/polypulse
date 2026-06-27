@@ -99,3 +99,11 @@ def test_tokens_for_slug(monkeypatch):
     mkts = list_markets()
     assert tokens_for_slug(mkts, "m-open-list") == ["tokC", "tokD"]
     assert tokens_for_slug(mkts, "nope") == []
+
+
+def test_public_exports():
+    import polypulse
+
+    assert polypulse.list_markets is markets.list_markets
+    assert polypulse.tokens_for_slug is markets.tokens_for_slug
+    assert polypulse.Market is markets.Market
