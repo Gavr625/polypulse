@@ -50,32 +50,35 @@ class BookFeed:
 
     # ----- reads (sync, no network) -----
 
+    def _ob(self, token_id: str) -> OrderBook | None:
+        return self.books.get(str(token_id))
+
     def best_bid(self, token_id: str) -> float | None:
-        ob = self.books.get(str(token_id))
+        ob = self._ob(token_id)
         return ob.best_bid() if ob else None
 
     def best_ask(self, token_id: str) -> float | None:
-        ob = self.books.get(str(token_id))
+        ob = self._ob(token_id)
         return ob.best_ask() if ob else None
 
     def mid(self, token_id: str) -> float | None:
-        ob = self.books.get(str(token_id))
+        ob = self._ob(token_id)
         return ob.mid() if ob else None
 
     def spread(self, token_id: str) -> float | None:
-        ob = self.books.get(str(token_id))
+        ob = self._ob(token_id)
         return ob.spread() if ob else None
 
     def book(self, token_id: str) -> OrderBook | None:
-        ob = self.books.get(str(token_id))
+        ob = self._ob(token_id)
         return ob.snapshot() if ob else None
 
     def staleness(self, token_id: str) -> float | None:
-        ob = self.books.get(str(token_id))
+        ob = self._ob(token_id)
         return (time.time() - ob.ts) if ob else None
 
     def source(self, token_id: str) -> str | None:
-        ob = self.books.get(str(token_id))
+        ob = self._ob(token_id)
         return ob.source if ob else None
 
     # ----- event handling -----
@@ -83,7 +86,7 @@ class BookFeed:
     def _handle(self, raw: str) -> None:
         try:
             data = json.loads(raw)
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
             self.logger.debug("polypulse: dropped unparseable frame")
             return
         events = data if isinstance(data, list) else [data]
@@ -91,32 +94,36 @@ class BookFeed:
         for ev in events:
             if not isinstance(ev, dict):
                 continue
-            et = ev.get("event_type")
-            if et == "book":
-                aid = ev.get("asset_id")
-                if not aid:
-                    continue
-                ob = self.books.get(aid)
-                if ob is None:
-                    ob = OrderBook()
-                ob.apply_snapshot(ev.get("bids"), ev.get("asks"), now, "ws")
-                self.books[aid] = ob
-                self._fire(aid, ev)
-            elif et == "price_change":
-                for pc in ev.get("price_changes") or []:
-                    aid = pc.get("asset_id")
-                    ob = self.books.get(aid) if aid else None
-                    if ob is None:
+            try:
+                et = ev.get("event_type")
+                if et == "book":
+                    aid = ev.get("asset_id")
+                    if not aid:
                         continue
-                    ob.apply_change(
-                        pc.get("side", ""), pc.get("price", ""),
-                        float(pc.get("size", 0)), now, "ws",
-                    )
+                    ob = self.books.get(aid)
+                    if ob is None:
+                        ob = OrderBook()
+                    ob.apply_snapshot(ev.get("bids"), ev.get("asks"), now, "ws")
+                    self.books[aid] = ob
                     self._fire(aid, ev)
-            else:
-                aid = ev.get("asset_id")
-                if aid:
-                    self._fire(aid, ev)
+                elif et == "price_change":
+                    for pc in ev.get("price_changes") or []:
+                        aid = pc.get("asset_id")
+                        ob = self.books.get(aid) if aid else None
+                        if ob is None:
+                            continue
+                        ob.apply_change(
+                            pc.get("side", ""), pc.get("price", ""),
+                            float(pc.get("size", 0)), now, "ws",
+                        )
+                        self._fire(aid, ev)
+                else:
+                    aid = ev.get("asset_id")
+                    if aid:
+                        self._fire(aid, ev)
+            except (ValueError, TypeError, KeyError):
+                self.logger.debug("polypulse: dropped malformed event")
+                continue
 
     def _fire(self, token_id: str, event: dict[str, Any]) -> None:
         # Filled in by Task 5. For now, a no-op when no callback is set.

@@ -63,6 +63,36 @@ def test_unknown_token_returns_none():
     assert feed.source("NOPE") is None
 
 
+def test_handle_price_change_sell_side_updates_ask():
+    feed = BookFeed(["T1"])
+    feed._handle(_book_msg("T1"))
+    assert feed.best_ask("T1") == 0.42
+    feed._handle(json.dumps({
+        "event_type": "price_change",
+        "price_changes": [{"asset_id": "T1", "price": "0.41", "size": "5", "side": "SELL"}],
+    }))
+    assert feed.best_ask("T1") == 0.41
+
+
+def test_handle_malformed_size_does_not_raise():
+    feed = BookFeed(["T1"])
+    feed._handle(_book_msg("T1"))
+    feed._handle(json.dumps({
+        "event_type": "price_change",
+        "price_changes": [{"asset_id": "T1", "price": "0.41", "size": "", "side": "BUY"}],
+    }))  # must not raise
+    assert feed.best_bid("T1") == 0.40
+    assert feed.best_ask("T1") == 0.42
+
+
+def test_staleness_is_nonnegative_after_update():
+    feed = BookFeed(["T1"])
+    feed._handle(_book_msg("T1"))
+    staleness = feed.staleness("T1")
+    assert isinstance(staleness, float)
+    assert staleness >= 0
+
+
 def _book_dict(token: str) -> dict:
     return {
         "event_type": "book",
