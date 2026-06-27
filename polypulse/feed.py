@@ -51,6 +51,7 @@ class BookFeed:
         self._stop = False
         self._connected = False
         self._last_frame_ts = 0.0
+        self._ws: Any = None
         self._pending: set[asyncio.Task[Any]] = set()
 
     # ----- reads (sync, no network) -----
@@ -158,10 +159,39 @@ class BookFeed:
         except Exception:
             self.logger.exception("polypulse: async on_update callback raised")
 
+    # ----- heartbeat & watchdog -----
+
+    async def _heartbeat(self, ws: Any) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self.ping_interval)
+                await ws.send("PING")
+        except asyncio.CancelledError:
+            pass
+
+    async def _watchdog(self, ws: Any) -> None:
+        interval = max(0.005, min(5.0, self.watchdog_timeout / 3))
+        try:
+            while True:
+                await asyncio.sleep(interval)
+                if time.time() - self._last_frame_ts > self.watchdog_timeout:
+                    self.logger.debug("polypulse: watchdog tripped, forcing reconnect")
+                    await ws.close()
+                    return
+        except asyncio.CancelledError:
+            pass
+
     # ----- connection loop -----
 
     def stop(self) -> None:
         self._stop = True
+        ws = self._ws
+        if ws is not None:
+            try:
+                asyncio.get_running_loop().create_task(ws.close())
+            except RuntimeError:
+                # No running loop: the loop will exit on its next iteration.
+                pass
 
     def _subscribe_msg(self) -> str:
         return json.dumps({
@@ -172,7 +202,10 @@ class BookFeed:
 
     async def run(self) -> None:
         """Maintain the connection forever (until :meth:`stop`), reconnecting
-        with exponential backoff and resubscribing each time."""
+        with exponential backoff and resubscribing each time.
+
+        :meth:`stop` closes the active connection for prompt shutdown.
+        """
         backoff = 0.5
         while not self._stop:
             try:
@@ -181,8 +214,11 @@ class BookFeed:
                 ) as ws:
                     await ws.send(self._subscribe_msg())
                     self._connected = True
+                    self._ws = ws
                     self._last_frame_ts = time.time()
                     backoff = 0.5
+                    hb = asyncio.create_task(self._heartbeat(ws))
+                    wd = asyncio.create_task(self._watchdog(ws))
                     try:
                         async for raw in ws:
                             self._last_frame_ts = time.time()
@@ -191,7 +227,10 @@ class BookFeed:
                                 continue
                             self._handle(msg)
                     finally:
+                        hb.cancel()
+                        wd.cancel()
                         self._connected = False
+                        self._ws = None
             except Exception as exc:
                 self.logger.debug("polypulse: ws error, will reconnect: %s", exc)
             if self._stop:

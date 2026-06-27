@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import types
 
 import polypulse.feed as feed_mod
@@ -175,3 +176,62 @@ def test_run_subscribes_and_applies_then_reconnects(monkeypatch):
     assert json.loads(ws1.sent[0])["assets_ids"] == ["T1"]  # subscribed
     assert json.loads(ws2.sent[0])["assets_ids"] == ["T1"]  # resubscribed after reconnect
     assert len(made) == 2
+
+
+def test_heartbeat_sends_ping():
+    feed = BookFeed(["T1"], ping_interval=0.01)
+    ws = FakeWS([])
+
+    async def run():
+        task = asyncio.create_task(feed._heartbeat(ws))
+        await asyncio.sleep(0.05)
+        task.cancel()
+
+    asyncio.run(run())
+    assert "PING" in ws.sent
+
+
+def test_watchdog_closes_when_silent():
+    feed = BookFeed(["T1"], watchdog_timeout=0.02)
+    ws = FakeWS([])
+    feed._last_frame_ts = time.time() - 10.0  # already stale
+
+    asyncio.run(asyncio.wait_for(feed._watchdog(ws), timeout=1.0))
+    assert ws.closed is True
+
+
+def test_watchdog_stays_alive_while_frames_arrive():
+    feed = BookFeed(["T1"], watchdog_timeout=0.2)
+    ws = FakeWS([])
+
+    async def run():
+        feed._last_frame_ts = time.time()
+        wd = asyncio.create_task(feed._watchdog(ws))
+        for _ in range(5):
+            await asyncio.sleep(0.05)
+            feed._last_frame_ts = time.time()  # simulate PONG/data keeping it alive
+        alive = not wd.done()
+        wd.cancel()
+        return alive
+
+    assert asyncio.run(run()) is True
+    assert ws.closed is False
+
+
+def test_stop_closes_live_connection(monkeypatch):
+    # A continuously-streaming connection (PONG frames keep it live but are skipped).
+    ws = FakeWS(["PONG"] * 5000)
+    feed = BookFeed(["T1"], rest_fallback=False)
+    monkeypatch.setattr(
+        feed_mod, "websockets",
+        types.SimpleNamespace(connect=lambda *a, **k: FakeConnect(ws)),
+    )
+
+    async def run():
+        task = asyncio.create_task(feed.run())
+        await asyncio.sleep(0.02)            # let it connect and start streaming
+        feed.stop()                          # must close the live ws → loop ends promptly
+        await asyncio.wait_for(task, timeout=1.0)
+        return ws.closed
+
+    assert asyncio.run(run()) is True
